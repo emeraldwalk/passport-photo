@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="PassportCam">
   <meta name="theme-color" content="#000000">
   <title>Passport Photo</title>
-  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Passport%20Photo%22%2C%22short_name%22%3A%22PassportCam%22%2C%22display%22%3A%22fullscreen%22%2C%22orientation%22%3A%22portrait%22%2C%22background_color%22%3A%22%23000%22%2C%22theme_color%22%3A%22%23000%22%7D">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -513,23 +514,9 @@
     startCamera()
   })
 
-  // ─── Service Worker (offline support on Android/Chrome) ───────────────────
+  // ─── Service Worker ────────────────────────────────────────────────────────
   if ('serviceWorker' in navigator) {
-    const swSrc = `
-      const CACHE = 'passport-cam-v1';
-      self.addEventListener('install', e => {
-        e.waitUntil(caches.open(CACHE).then(c => c.addAll([self.location.pathname])));
-        self.skipWaiting();
-      });
-      self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-      self.addEventListener('fetch', e => {
-        e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
-      });
-    `
-    try {
-      const blob = new Blob([swSrc], { type: 'application/javascript' })
-      navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {})
-    } catch (_) {}
+    navigator.serviceWorker.register('sw.js').catch(() => {})
   }
 
   // ─── Boot ──────────────────────────────────────────────────────────────────
