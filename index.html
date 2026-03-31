@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PassportCam">
+  <meta name="theme-color" content="#000000">
+  <title>Passport Photo</title>
+  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Passport%20Photo%22%2C%22short_name%22%3A%22PassportCam%22%2C%22display%22%3A%22fullscreen%22%2C%22orientation%22%3A%22portrait%22%2C%22background_color%22%3A%22%23000%22%2C%22theme_color%22%3A%22%23000%22%7D">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 20px) env(safe-area-inset-left, 0px);
+      gap: 16px;
+    }
+
+    #viewfinder-wrap {
+      position: relative;
+      width: min(100vw, 65dvh, 65vh);
+      aspect-ratio: 1 / 1;
+      overflow: hidden;
+      border-radius: 4px;
+      background: #111;
+    }
+
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    #video.mirror {
+      transform: scaleX(-1);
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: block;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+      padding: 8px 0;
+    }
+
+    #btn-capture {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 5px solid rgba(255,255,255,0.9);
+      background: rgba(255,255,255,0.15);
+      cursor: pointer;
+      position: relative;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+
+    #btn-capture:active {
+      background: rgba(255,255,255,0.5);
+    }
+
+    #btn-capture::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.85);
+    }
+
+    #btn-flip {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #btn-flip:active { background: rgba(255,255,255,0.25); }
+
+    /* Spacer to balance the flip button on the right */
+    .ctrl-spacer {
+      width: 48px;
+      height: 48px;
+    }
+
+    #status {
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+      text-align: center;
+      min-height: 20px;
+    }
+
+    /* Preview screen */
+    #preview-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: env(safe-area-inset-top, 20px) 16px env(safe-area-inset-bottom, 20px);
+    }
+
+    #preview-screen.visible {
+      display: flex;
+    }
+
+    #preview-img {
+      max-width: min(100%, 80vh);
+      max-height: 70dvh;
+      object-fit: contain;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    #preview-label {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+    }
+
+    .preview-btns {
+      display: flex;
+      gap: 16px;
+    }
+
+    .pv-btn {
+      padding: 12px 28px;
+      border-radius: 24px;
+      border: 2px solid rgba(255,255,255,0.6);
+      background: transparent;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #btn-save {
+      background: rgba(255,255,255,0.9);
+      color: #000;
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    /* Error screen */
+    #error-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+      gap: 16px;
+    }
+
+    #error-screen.visible {
+      display: flex;
+    }
+
+    #error-screen h2 {
+      font-size: 20px;
+    }
+
+    #error-screen p {
+      font-size: 15px;
+      color: rgba(255,255,255,0.6);
+      line-height: 1.5;
+    }
+
+    #btn-retry {
+      padding: 12px 28px;
+      border-radius: 24px;
+      border: 2px solid rgba(255,255,255,0.6);
+      background: transparent;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="viewfinder-wrap">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <div id="controls">
+    <div class="ctrl-spacer"></div>
+    <button id="btn-capture" aria-label="Take photo"></button>
+    <button id="btn-flip" aria-label="Flip camera">&#x21BB;</button>
+  </div>
+  <div id="status">Position face within the oval</div>
+</div>
+
+<div id="preview-screen">
+  <img id="preview-img" alt="Captured photo">
+  <div id="preview-label">Long-press image to save, or tap Save below</div>
+  <div class="preview-btns">
+    <button class="pv-btn" id="btn-retake">Retake</button>
+    <button class="pv-btn" id="btn-save">Save</button>
+  </div>
+</div>
+
+<div id="error-screen">
+  <h2>Camera Access Required</h2>
+  <p id="error-msg">Please allow camera access when prompted, then tap Retry.</p>
+  <p>On iPhone: Settings &rarr; Safari &rarr; Camera &rarr; Allow</p>
+  <button id="btn-retry">Retry</button>
+</div>
+
+<script>
+  // ─── Geometry constants ───────────────────────────────────────────────────
+  // Frame: 2×2 inches. Head: 1–1.375 inches, chin anchored at 75% from top.
+  // All values as fractions of frame size (0 = top/left, 1 = bottom/right).
+  const GEOM = {
+    cx: 0.50,           // oval center x
+    chinY: 0.75,        // chin guide line (1.5 in from top in 2 in frame)
+    // Outer oval — max head size (1.375 in head, top at 6.25% from top)
+    outerTopY: 0.0625,  // = (1.5 - 1.375) / 2 = 0.0625
+    outerCy: 0.40625,   // midpoint of chin and outerTopY
+    outerRy: 0.34375,   // half of (0.75 - 0.0625)
+    outerRx: 0.27,      // natural head width proportion
+    // Inner oval — min head size (1.0 in head, top at 25% from top)
+    innerTopY: 0.25,    // = (1.5 - 1.0) / 2 = 0.25
+    innerCy: 0.50,      // midpoint of chin and innerTopY
+    innerRy: 0.25,      // half of (0.75 - 0.25)
+  }
+
+  // ─── State ─────────────────────────────────────────────────────────────────
+  let stream = null
+  let facingMode = 'environment'
+  let capturedBlob = null
+
+  // ─── Elements ──────────────────────────────────────────────────────────────
+  const video        = document.getElementById('video')
+  const overlayCanvas = document.getElementById('overlay')
+  const viewfinderWrap = document.getElementById('viewfinder-wrap')
+  const previewScreen = document.getElementById('preview-screen')
+  const previewImg   = document.getElementById('preview-img')
+  const errorScreen  = document.getElementById('error-screen')
+  const errorMsg     = document.getElementById('error-msg')
+  const statusEl     = document.getElementById('status')
+
+  // ─── Draw overlay ──────────────────────────────────────────────────────────
+  function drawOverlay() {
+    const S = overlayCanvas.width
+    if (S === 0) return
+    const ctx = overlayCanvas.getContext('2d')
+    ctx.clearRect(0, 0, S, S)
+
+    const g = GEOM
+    const cx = S * g.cx
+    const chinY = S * g.chinY
+
+    // Corner brackets — show the photo boundary
+    const bLen = S * 0.07
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'
+    ctx.lineWidth = Math.max(2, S * 0.005)
+    for (const [bx, by, dx, dy] of [
+      [0, 0, 1, 1], [S, 0, -1, 1], [0, S, 1, -1], [S, S, -1, -1]
+    ]) {
+      ctx.beginPath()
+      ctx.moveTo(bx + dx * bLen, by)
+      ctx.lineTo(bx, by)
+      ctx.lineTo(bx, by + dy * bLen)
+      ctx.stroke()
+    }
+
+    // Outer oval (max head — solid yellow)
+    const outerRy = S * g.outerRy
+    const outerRx = S * g.outerRx
+    const outerCy = S * g.outerCy
+    ctx.beginPath()
+    ctx.ellipse(cx, outerCy, outerRx, outerRy, 0, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(255, 220, 0, 0.95)'
+    ctx.lineWidth = Math.max(2, S * 0.005)
+    ctx.setLineDash([])
+    ctx.stroke()
+
+    // Inner oval (min head — dashed yellow)
+    const innerRy = S * g.innerRy
+    const innerRx = outerRx * (innerRy / outerRy)
+    const innerCy = S * g.innerCy
+    ctx.beginPath()
+    ctx.ellipse(cx, innerCy, innerRx, innerRy, 0, 0, Math.PI * 2)
+    ctx.setLineDash([Math.max(6, S * 0.012), Math.max(5, S * 0.01)])
+    ctx.strokeStyle = 'rgba(255, 220, 0, 0.5)'
+    ctx.lineWidth = Math.max(1.5, S * 0.003)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // Chin tick line
+    const tickW = outerRx * 0.55
+    ctx.beginPath()
+    ctx.moveTo(cx - tickW, chinY)
+    ctx.lineTo(cx + tickW, chinY)
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+    ctx.lineWidth = Math.max(1, S * 0.002)
+    ctx.stroke()
+
+    // Label
+    const fontSize = Math.max(11, S * 0.038)
+    ctx.font = `${fontSize}px -apple-system, sans-serif`
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('Fit face between ovals', cx, S * 0.875)
+    ctx.fillText('Chin on dashed line', cx, S * 0.875 + fontSize * 1.3)
+  }
+
+  // ─── Resize observer — keep overlay canvas sized to viewfinder ────────────
+  const ro = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const size = Math.round(entry.contentRect.width)
+      overlayCanvas.width  = size
+      overlayCanvas.height = size
+      drawOverlay()
+    }
+  })
+  ro.observe(viewfinderWrap)
+
+  // ─── Camera ────────────────────────────────────────────────────────────────
+  async function startCamera() {
+    try {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop())
+        stream = null
+      }
+
+      statusEl.textContent = 'Starting camera…'
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width:  { ideal: 2000 },
+          height: { ideal: 2000 },
+        },
+        audio: false
+      })
+
+      video.srcObject = stream
+      video.classList.toggle('mirror', facingMode === 'user')
+
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve
+        video.onerror = reject
+      })
+
+      try { await video.play() } catch (_) {}
+
+      statusEl.textContent = 'Position face within the oval'
+      errorScreen.classList.remove('visible')
+
+    } catch (err) {
+      showError(err)
+    }
+  }
+
+  function showError(err) {
+    let msg = 'Could not access the camera.'
+    if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+      msg = 'Camera permission was denied.'
+    } else if (err && err.name === 'NotFoundError') {
+      msg = 'No camera found on this device.'
+    } else if (err && err.name === 'NotSupportedError') {
+      msg = 'Camera not supported in this browser. Try Safari on iPhone.'
+    }
+    errorMsg.textContent = msg
+    errorScreen.classList.add('visible')
+    statusEl.textContent = ''
+  }
+
+  // ─── Capture ───────────────────────────────────────────────────────────────
+  async function capturePhoto() {
+    const OUTPUT = 1200 // 600 DPI × 2 inches
+
+    const offscreen = document.createElement('canvas')
+    offscreen.width  = OUTPUT
+    offscreen.height = OUTPUT
+    const ctx = offscreen.getContext('2d')
+
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+    const cropSize = Math.min(vw, vh)
+    const sx = (vw - cropSize) / 2
+    const sy = (vh - cropSize) / 2
+
+    // Mirror front camera output to match what user sees
+    if (facingMode === 'user') {
+      ctx.translate(OUTPUT, 0)
+      ctx.scale(-1, 1)
+    }
+
+    ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, OUTPUT, OUTPUT)
+
+    return new Promise((resolve, reject) => {
+      offscreen.toBlob(blob => {
+        if (blob) resolve(blob)
+        else {
+          // Fallback: toDataURL → Blob
+          try {
+            const dataUrl = offscreen.toDataURL('image/jpeg', 0.95)
+            const bin = atob(dataUrl.split(',')[1])
+            const arr = new Uint8Array(bin.length)
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+            resolve(new Blob([arr], { type: 'image/jpeg' }))
+          } catch (e) { reject(e) }
+        }
+      }, 'image/jpeg', 0.95)
+    })
+  }
+
+  // ─── Save ──────────────────────────────────────────────────────────────────
+  async function savePhoto(blob) {
+    const file = new File([blob], 'passport-photo.jpg', { type: 'image/jpeg' })
+
+    // Tier 1: Web Share API with files (iOS 15+)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Passport Photo' })
+        return
+      } catch (e) {
+        if (e.name === 'AbortError') return // user cancelled — that's fine
+      }
+    }
+
+    // Tier 2: anchor download (desktop, Android Chrome)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'passport-photo.jpg'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+
+  // ─── Event handlers ────────────────────────────────────────────────────────
+  document.getElementById('btn-capture').addEventListener('click', async () => {
+    if (!stream) return
+    statusEl.textContent = 'Capturing…'
+    try {
+      capturedBlob = await capturePhoto()
+      const url = URL.createObjectURL(capturedBlob)
+      previewImg.src = url
+      previewScreen.classList.add('visible')
+      statusEl.textContent = 'Position face within the oval'
+    } catch (e) {
+      statusEl.textContent = 'Capture failed. Try again.'
+      console.error(e)
+    }
+  })
+
+  document.getElementById('btn-flip').addEventListener('click', () => {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment'
+    startCamera()
+  })
+
+  document.getElementById('btn-retake').addEventListener('click', () => {
+    previewScreen.classList.remove('visible')
+    if (previewImg.src.startsWith('blob:')) URL.revokeObjectURL(previewImg.src)
+    capturedBlob = null
+  })
+
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    if (capturedBlob) await savePhoto(capturedBlob)
+  })
+
+  document.getElementById('btn-retry').addEventListener('click', () => {
+    errorScreen.classList.remove('visible')
+    startCamera()
+  })
+
+  // ─── Service Worker (offline support on Android/Chrome) ───────────────────
+  if ('serviceWorker' in navigator) {
+    const swSrc = `
+      const CACHE = 'passport-cam-v1';
+      self.addEventListener('install', e => {
+        e.waitUntil(caches.open(CACHE).then(c => c.addAll([self.location.pathname])));
+        self.skipWaiting();
+      });
+      self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+      self.addEventListener('fetch', e => {
+        e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+      });
+    `
+    try {
+      const blob = new Blob([swSrc], { type: 'application/javascript' })
+      navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {})
+    } catch (_) {}
+  }
+
+  // ─── Boot ──────────────────────────────────────────────────────────────────
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError({ name: 'NotSupportedError' })
+  } else {
+    startCamera()
+  }
+</script>
+</body>
+</html>
